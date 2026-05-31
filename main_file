@@ -4,9 +4,9 @@ import matplotlib.patches as patches
 
 G = 6.673e-11  # m^3 / (kg * s^2)
 
--------------------------------------------------------------------------------
-Variables to be selected/entered
--------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#Variables to be selected/entered
+#-------------------------------------------------------------------------------
 
 print("Body of reference options:")
 print("1. Earth")
@@ -49,9 +49,9 @@ v_vec = np.array([
     float(input("Enter Z velocity (m/s): "))
 ])
 
---------------------------------------------------------------------------------------
-Calculations based off of inputted values above
---------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------
+#Calculations based off of inputted values above
+#--------------------------------------------------------------------------------------
 
 # Given position and velocity vectors
 h_vec = np.cross(position, v_vec)   # angular momentum vector
@@ -70,13 +70,13 @@ e_vec = (np.cross(v_vec, h_vec) / mu) - (position / resultant_magnitude)
 e_mag = np.linalg.norm(e_vec)  # scalar eccentricity
 
 # True anomaly θ (the angle between e and r)
-# np.dot gives us e·r = |e||r|cosθ, rearranging gives θ
+# np.dot gives us e * r = |e||r|cosθ, rearranging gives θ
 # np.arccos converts from cosθ back to θ in radians
 # np.degrees converts radians to degrees
 cos_theta = np.dot(e_vec, position) / (e_mag * resultant_magnitude)
 theta = np.degrees(np.arccos(np.clip(cos_theta, -1, 1))) #np.clip keeps e between -1 and 1
 
-# Trajectory equation r = p / (1 + e·cosθ)
+# Trajectory equation r = p / (1 + e * cosθ)
 r_check = p / (1 + e_mag * np.cos(np.radians(theta)))
 
 # Orbit classification (found by eccentricity)
@@ -121,7 +121,7 @@ print(f"Eccentricity (e): {e_mag:.6f}")
 print(f"True anomaly θ (degrees): {theta:.4f}")
 print(f"Orbit type: {orbit_type}")
 print(f"r from trajectory equation (m): {r_check:.4e}")
-print(f"Specific Mechanical Energy (\mathcal{E}): {energy:.4e} J/kg")
+print(f"Specific Mechanical Energy (E): {energy:.4e} J/kg")
 
 if np.isinf(a):
     print("Semi-major axis (a): Infinity (Parabolic)")
@@ -132,50 +132,64 @@ if period is not None:
 else:
     print("Orbital Period (T): N/A (Escape Trajectory)")
 
-------------------------------------------------------------------------------------------------------
-Matplotlib calculations (the visualisation)
-------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------
+#Matplotlib calculations (the visualisation)
+#------------------------------------------------------------------------------------------------------
 
-# Sweep true anomaly 0 to 360 degrees
-# np.linspace(start, stop, num) enables even num generation between start and end
-# 1000 points gives a smooth curve
-theta_range = np.linspace(0, 360, 1000)
+# initial setup
+fig, ax = plt.subplots(figsize=(8, 8))
 
-if e_mag < 1:
-    # Trajectory equation applied across all angles
-    r_range = p / (1 + e_mag * np.cos(np.radians(theta_range)))
-
-    # Convert polar coords (r, θ) to cartesian (x, y) for plotting
-    # x = r·cosθ,  y = r·sinθ
-    x = r_range * np.cos(np.radians(theta_range))
-    y = r_range * np.sin(np.radians(theta_range))
-
-    # Current spacecraft position in cartesian
-    sc_x = resultant_magnitude * np.cos(np.radians(theta))
-    sc_y = resultant_magnitude * np.sin(np.radians(theta))
-
-    # fig is the window
-    # ax is the axis used
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.plot(x, y, label="Orbit", color="royalblue")
-
-    # 'yo' yellow circle marker, markersize controls dot size (Earth)
-    central_circle = patches.Circle((0, 0), body_radii,
-                                     color="gold", zorder=5, label=body)
-    ax.add_patch(central_circle)
-
-    # 'ro'  red circle marker (the spacecraft in question)
-    ax.plot(sc_x, sc_y, 'ro', markersize=6, label=probe_name)
-
-    ax.set_xlabel("x (m)")
-    ax.set_ylabel("y (m)")
-    ax.set_title(f"{orbit_type} Orbit  |  e = {e_mag:.4f}  |  p = {p:.4e} m")
-    ax.legend()
-    ax.set_aspect("equal")
-    ax.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-else:
-    print("Hyperbolic/parabolic not ready!")
+if e_mag < 1.0:
+    #Closed orbits
+    theta_range = np.linspace(0, 2 * np.pi, 1000)
     
+else:
+    # Open Orbits (Hyperbolic / Parabolic) using a limited sweep
+    if e_mag > 1.0:
+        #True anomaly
+        theta_inf = np.arccos(-1.0 / e_mag)
+        # Caution around r not tending to infinity
+        margin = np.radians(1.0) 
+        theta_range = np.linspace(-theta_inf + margin, theta_inf - margin, 1000)
+    else:
+        # Parabolic orbit (e = 1)
+        margin = np.radians(10.0)
+        theta_range = np.linspace(-np.pi + margin, np.pi - margin, 1000)
+
+# Trajectory equation applied across all angles
+r_range = p / (1 + e_mag * np.cos(theta_range))
+
+# Convert polar coords (r, θ) to cartesian (x, y) for plotting
+# x = r * cosθ,  y = r * sinθ
+x = r_range * np.cos(theta_range)
+y = r_range * np.sin(theta_range)
+    
+# ax is the axis used
+ax.plot(x, y, label="Orbit", color="royalblue", lw=2)
+
+# Current spacecraft position
+sc_theta_rad = np.radians(theta)
+sc_x = resultant_magnitude * np.cos(sc_theta_rad)
+sc_y = resultant_magnitude * np.sin(sc_theta_rad)
+# 'ro'  red circle marker (the spacecraft/body in question)
+ax.plot(sc_x, sc_y, 'ro', markersize=6, label=probe_name)
+
+# 'yo' yellow circle marker, markersize controls dot size - draw body of focus at centre
+central_circle = patches.Circle((0, 0), body_radii, color="gold", zorder=5, label=body)
+ax.add_patch(central_circle)
+
+if e_mag >= 1.0:
+    # Ensures scale isn't whacky basically (when dealing with large values)
+    max_dim = resultant_magnitude * 3
+    ax.set_xlim(-max_dim, max_dim)
+    ax.set_ylim(-max_dim, max_dim)
+
+ax.set_xlabel("x (m)")
+ax.set_ylabel("y (m)")
+ax.set_title(f"{orbit_type} Orbit  |  e = {e_mag:.4f}  |  p = {p:.4e} m")
+ax.legend()
+ax.set_aspect("equal") # for circular
+ax.grid(True)
+plt.tight_layout()
+plt.show()
+
