@@ -1,0 +1,181 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
+G = 6.673e-11  # m^3 / (kg * s^2)
+
+-------------------------------------------------------------------------------
+Variables to be selected/entered
+-------------------------------------------------------------------------------
+
+print("Body of reference options:")
+print("1. Earth")
+print("2. Moon")
+print("3. Sun")
+print("4. Custom")
+
+option = int(input("Select body of reference (number): "))
+
+if option == 1:
+    mu = 3.986e14      # Earth
+    body = "Earth"
+    body_radii = 6.371e6
+elif option == 2:
+    mu = 4.905e12      # Moon
+    body = "Moon"
+    body_radii = 1.737e6
+elif option == 3:
+    mu = 1.327e20      # Sun
+    body = "Sun"
+    body_radii = 6.957e8
+elif option == 4:
+    mass_reference = float(input("Enter body of reference mass (kg): ")) # Custom body
+    mu = G * mass_reference
+    body = str(input("Enter body of reference name: "))
+    body_radii = float(input("Enter central body radius (m): "))
+
+mass_probe = float(input("Enter probe mass (kg): "))
+probe_name = str(input("Enter probe name: "))
+
+position = np.array([
+    float(input("Enter X coord of body 1 (m): ")),
+    float(input("Enter Y coord of body 1 (m): ")),
+    float(input("Enter Z coord of body 1 (m): "))
+])
+
+v_vec = np.array([
+    float(input("Enter X velocity (m/s): ")),
+    float(input("Enter Y velocity (m/s): ")),
+    float(input("Enter Z velocity (m/s): "))
+])
+
+--------------------------------------------------------------------------------------
+Calculations based off of inputted values above
+--------------------------------------------------------------------------------------
+
+# Given position and velocity vectors
+h_vec = np.cross(position, v_vec)   # angular momentum vector
+h_mag = np.linalg.norm(h_vec)    # magnitude
+
+resultant_magnitude = np.linalg.norm(position)
+velocity_mag = np.linalg.norm(v_vec)
+
+# Semi-latus rectum p = h^2/mu
+p = h_mag**2 / mu
+
+# Eccentricity vector e = (v x h)/μ - r/r
+# np.cross(v_vec, h_vec) order is critical
+# v x h NOT same as h x v
+e_vec = (np.cross(v_vec, h_vec) / mu) - (position / resultant_magnitude)
+e_mag = np.linalg.norm(e_vec)  # scalar eccentricity
+
+# True anomaly θ (the angle between e and r)
+# np.dot gives us e·r = |e||r|cosθ, rearranging gives θ
+# np.arccos converts from cosθ back to θ in radians
+# np.degrees converts radians to degrees
+cos_theta = np.dot(e_vec, position) / (e_mag * resultant_magnitude)
+theta = np.degrees(np.arccos(np.clip(cos_theta, -1, 1))) #np.clip keeps e between -1 and 1
+
+# Trajectory equation r = p / (1 + e·cosθ)
+r_check = p / (1 + e_mag * np.cos(np.radians(theta)))
+
+# Orbit classification (found by eccentricity)
+if e_mag < 1e-6:
+    orbit_type = "Circular"
+elif e_mag < 1:
+    orbit_type = "Elliptical"
+elif abs(e_mag - 1) < 1e-6:
+    orbit_type = "Parabolic"
+else:
+    orbit_type = "Hyperbolic"
+
+acceleration = -(mu/(resultant_magnitude)**3) * (position)
+
+F = mass_probe * acceleration
+
+# Find the specific mechanical energy E = (v^2 / 2) - (mu / r)
+energy = (velocity_mag**2 / 2.0) - (mu / resultant_magnitude)
+
+# Parabolic, enery = 0 hence a = infinite value
+if abs(orbit_type == "Parabolic"):
+    a = np.inf
+else:
+    a = -mu / (2 * energy)
+
+# Determine the orbital period of a body (eliptical and circular)
+if e_mag < 1.0:
+    period = 2 * np.pi * np.sqrt(a**3 / mu)
+else:
+    period = None
+    
+print(f"\nDistance from body of reference (m):  {resultant_magnitude:.4e}")
+print(f"Force vector (N): {F}")
+print(f"Force magnitude (N): {np.linalg.norm(F):.4e}")
+print(f"Acceleration vector (m/s^2): {acceleration}")
+print(f"Acceleration magnitude (m/s^2): {np.linalg.norm(acceleration):.4e}")
+print(f"Velocity magnitude (m/s): {velocity_mag:.4e}")
+print(f"Angular momentum vector: {h_vec}")
+print(f"Angular momentum magnitude: {h_mag:.4e}")
+print(f"Semi-latus rectum p (m): {p:.4e}")
+print(f"Eccentricity (e): {e_mag:.6f}")
+print(f"True anomaly θ (degrees): {theta:.4f}")
+print(f"Orbit type: {orbit_type}")
+print(f"r from trajectory equation (m): {r_check:.4e}")
+print(f"Specific Mechanical Energy (\mathcal{E}): {energy:.4e} J/kg")
+
+if np.isinf(a):
+    print("Semi-major axis (a): Infinity (Parabolic)")
+else:
+    print(f"Semi-major axis (a): {a:.4e} m")
+if period is not None:
+    print(f"Orbital Period (T): {period:.2f} seconds ({period/3600:.2f} hours)")
+else:
+    print("Orbital Period (T): N/A (Escape Trajectory)")
+
+------------------------------------------------------------------------------------------------------
+Matplotlib calculations (the visualisation)
+------------------------------------------------------------------------------------------------------
+
+# Sweep true anomaly 0 to 360 degrees
+# np.linspace(start, stop, num) enables even num generation between start and end
+# 1000 points gives a smooth curve
+theta_range = np.linspace(0, 360, 1000)
+
+if e_mag < 1:
+    # Trajectory equation applied across all angles
+    r_range = p / (1 + e_mag * np.cos(np.radians(theta_range)))
+
+    # Convert polar coords (r, θ) to cartesian (x, y) for plotting
+    # x = r·cosθ,  y = r·sinθ
+    x = r_range * np.cos(np.radians(theta_range))
+    y = r_range * np.sin(np.radians(theta_range))
+
+    # Current spacecraft position in cartesian
+    sc_x = resultant_magnitude * np.cos(np.radians(theta))
+    sc_y = resultant_magnitude * np.sin(np.radians(theta))
+
+    # fig is the window
+    # ax is the axis used
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.plot(x, y, label="Orbit", color="royalblue")
+
+    # 'yo' yellow circle marker, markersize controls dot size (Earth)
+    central_circle = patches.Circle((0, 0), body_radii,
+                                     color="gold", zorder=5, label=body)
+    ax.add_patch(central_circle)
+
+    # 'ro'  red circle marker (the spacecraft in question)
+    ax.plot(sc_x, sc_y, 'ro', markersize=6, label=probe_name)
+
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_title(f"{orbit_type} Orbit  |  e = {e_mag:.4f}  |  p = {p:.4e} m")
+    ax.legend()
+    ax.set_aspect("equal")
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+else:
+    print("Hyperbolic/parabolic not ready!")
+    
